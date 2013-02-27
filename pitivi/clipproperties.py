@@ -30,6 +30,7 @@ from pitivi.configure import get_ui_dir
 from pitivi.effects import EffectsPropertiesManager
 from pitivi.effects import HIDDEN_EFFECTS
 from pitivi.undo.timeline import CommitTimelineFinalizingAction
+from pitivi.utils.custom_effect_widgets import setup_custom_effect_widgets
 from pitivi.utils.loggable import Loggable
 from pitivi.utils.ui import disable_scroll
 from pitivi.utils.ui import EFFECT_TARGET_ENTRY
@@ -121,6 +122,7 @@ class EffectProperties(Gtk.Expander, Loggable):
         self.clip = None
         self._effect_config_ui = None
         self.effects_properties_manager = EffectsPropertiesManager(app)
+        setup_custom_effect_widgets(self.effects_properties_manager)
         self.clip_properties = clip_properties
 
         # The toolbar that will go between the list of effects and properties
