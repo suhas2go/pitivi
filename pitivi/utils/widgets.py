@@ -17,6 +17,7 @@
 # Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
 # Boston, MA 02110-1301, USA.
 """Classes and routines for creating widgets from `Gst.Element`s."""
+import importlib.util
 import math
 import os
 import re
@@ -108,7 +109,7 @@ class TextWidget(Gtk.Box, DynamicWidget):
         "activate": (GObject.SignalFlags.RUN_LAST, None, (),)
     }
 
-    def __init__(self, matches=None, choices=None, default=None, combobox=False):
+    def __init__(self, matches=None, choices=None, default=None, combobox=False, widget=None):
         if not default:
             # In the case of text widgets, a blank default is an empty string
             default = ""
@@ -119,23 +120,27 @@ class TextWidget(Gtk.Box, DynamicWidget):
         self.set_orientation(Gtk.Orientation.HORIZONTAL)
         self.set_border_width(0)
         self.set_spacing(0)
-        if choices:
-            self.combo = Gtk.ComboBoxText.new_with_entry()
-            self.text = self.combo.get_child()
-            self.combo.show()
-            disable_scroll(self.combo)
-            self.pack_start(self.combo, expand=False, fill=False, padding=0)
-            for choice in choices:
-                self.combo.append_text(choice)
-        elif combobox:
-            self.combo = Gtk.ComboBox.new_with_entry()
-            self.text = self.combo.get_child()
-            self.combo.show()
-            self.pack_start(self.combo, expand=False, fill=False, padding=0)
+        if widget is None:
+            if choices:
+                self.combo = Gtk.ComboBoxText.new_with_entry()
+                self.text = self.combo.get_child()
+                self.combo.show()
+                disable_scroll(self.combo)
+                self.pack_start(self.combo, expand=False, fill=False, padding=0)
+                for choice in choices:
+                    self.combo.append_text(choice)
+            elif combobox:
+                self.combo = Gtk.ComboBox.new_with_entry()
+                self.text = self.combo.get_child()
+                self.combo.show()
+                self.pack_start(self.combo, expand=False, fill=False, padding=0)
+            else:
+                self.text = Gtk.Entry()
+                self.text.show()
+                self.pack_start(self.text, expand=False, fill=False, padding=0)
         else:
-            self.text = Gtk.Entry()
-            self.text.show()
-            self.pack_start(self.text, expand=False, fill=False, padding=0)
+            self.text = widget
+
         self.matches = None
         self.last_valid = None
         self.valid = False
@@ -198,7 +203,7 @@ class TextWidget(Gtk.Box, DynamicWidget):
         """Allows setting the width of the text entry widget for compactness."""
         self.text.set_width_chars(width)
 
-
+# TODO : Is this completely wrapped?
 class NumericWidget(Gtk.Box, DynamicWidget):
     """Widget for entering a number.
 
@@ -211,49 +216,52 @@ class NumericWidget(Gtk.Box, DynamicWidget):
         lower (Optional[int]): The lower limit for this widget.
     """
 
-    def __init__(self, upper=None, lower=None, default=None):
+    def __init__(self, upper=None, lower=None, default=None, adjustment=None):
         Gtk.Box.__init__(self)
         DynamicWidget.__init__(self, default)
 
         self.set_orientation(Gtk.Orientation.HORIZONTAL)
         self.set_spacing(SPACING)
         self._type = None
+        self.spinner = None
 
-        reasonable_limit = 5000
-        with_slider = (lower is not None and lower > -reasonable_limit and
-            upper is not None and upper < reasonable_limit)
+        if adjustment is None:
+            reasonable_limit = 5000
+            with_slider = (lower is not None and lower > -reasonable_limit and
+                           upper is not None and upper < reasonable_limit)
+            self.adjustment = Gtk.Adjustment()
+            # Limit the limits, otherwise the widget appears huge.
+            # Workaround https://bugzilla.gnome.org/show_bug.cgi?id=727294
+            # If these hardcoded limits are a problem, the fix should be passing
+            # the proper limits using the upper and lower parameters.
+            if upper is None:
+                upper = GLib.MAXINT16
+            if lower is None:
+                lower = GLib.MININT16
+            self.adjustment.props.lower = max(GLib.MININT16, lower)
+            self.adjustment.props.upper = min(upper, GLib.MAXINT16)
 
-        self.adjustment = Gtk.Adjustment()
-        # Limit the limits, otherwise the widget appears huge.
-        # Workaround https://bugzilla.gnome.org/show_bug.cgi?id=727294
-        # If these hardcoded limits are a problem, the fix should be passing
-        # the proper limits using the upper and lower parameters.
-        if upper is None:
-            upper = GLib.MAXINT16
-        if lower is None:
-            lower = GLib.MININT16
-        self.adjustment.props.lower = max(GLib.MININT16, lower)
-        self.adjustment.props.upper = min(upper, GLib.MAXINT16)
+            if with_slider:
+                self.slider = Gtk.Scale.new(
+                    Gtk.Orientation.HORIZONTAL, self.adjustment)
+                self.pack_end(self.slider, expand=False, fill=False, padding=0)
+                self.slider.show()
+                disable_scroll(self.slider)
+                self.slider.set_size_request(width=100, height=-1)
+                self.slider.props.draw_value = False
+                # Abuse GTK3's progressbar "fill level" feature to provide
+                # a visual indication of the default value on property sliders.
+                if default is not None:
+                    self.slider.set_restrict_to_fill_level(False)
+                    self.slider.set_fill_level(float(default))
+                    self.slider.set_show_fill_level(True)
 
-        if with_slider:
-            self.slider = Gtk.Scale.new(
-                Gtk.Orientation.HORIZONTAL, self.adjustment)
-            self.pack_end(self.slider, expand=False, fill=False, padding=0)
-            self.slider.show()
-            disable_scroll(self.slider)
-            self.slider.set_size_request(width=100, height=-1)
-            self.slider.props.draw_value = False
-            # Abuse GTK3's progressbar "fill level" feature to provide
-            # a visual indication of the default value on property sliders.
-            if default is not None:
-                self.slider.set_restrict_to_fill_level(False)
-                self.slider.set_fill_level(float(default))
-                self.slider.set_show_fill_level(True)
-
-        self.spinner = Gtk.SpinButton(adjustment=self.adjustment)
-        self.pack_start(self.spinner, expand=False, fill=False, padding=0)
-        self.spinner.show()
-        disable_scroll(self.spinner)
+            self.spinner = Gtk.SpinButton(adjustment=self.adjustment)
+            self.pack_start(self.spinner, expand=False, fill=False, padding=0)
+            self.spinner.show()
+            disable_scroll(self.spinner)
+        else:
+            self.adjustment = adjustment
 
     def connectValueChanged(self, callback, *args):
         self.adjustment.connect("value-changed", callback, *args)
@@ -275,7 +283,8 @@ class NumericWidget(Gtk.Box, DynamicWidget):
         elif type_ == float:
             step = 0.01
             page = 0.1
-            self.spinner.props.digits = 2
+            if self.spinner:
+                self.spinner.props.digits = 2
         else:
             raise Exception('Unsupported property type: %s' % type_)
         lower = min(self.adjustment.props.lower, value)
@@ -530,7 +539,7 @@ class PathWidget(Gtk.FileChooserButton, DynamicWidget):
             self.emit("value-changed")
             self.dialog.hide()
 
-
+# TODO: How to use this?
 class ColorWidget(Gtk.ColorButton, DynamicWidget):
 
     def __init__(self, value_type=str, default=None):
@@ -588,6 +597,26 @@ class FontWidget(Gtk.FontButton, DynamicWidget):
         return self.get_font_name()
 
 
+def make_widget_wrapper(prop, widget):
+    """ Creates a wrapper child of DynamicWidget for @widget """
+
+    # Respect Object hierarchy here
+    if isinstance(widget, Gtk.SpinButton):
+        widget_adjustment = widget.get_adjustment()
+        widget_lower = widget_adjustment.props.lower
+        widget_upper = widget_adjustment.props.upper
+        return NumericWidget(upper=widget_upper, lower=widget_lower, adjustment=widget_adjustment, default=prop.default_value)
+    elif isinstance(widget, Gtk.Entry):
+        return TextWidget(widget=widget)
+    elif isinstance(widget, Gtk.Range):
+        widget_adjustment = widget.get_adjustment()
+        widget_lower = widget_adjustment.props.lower
+        widget_upper = widget_adjustment.props.upper
+        return NumericWidget(upper=widget_upper, lower=widget_lower, adjustment=widget_adjustment, default=prop.default_value)
+    else:
+        Loggable().fixme("%s has not been wrapped into a Dynamic Widget", widget)
+
+
 class GstElementSettingsWidget(Gtk.Box, Loggable):
     """Widget to modify the properties of a Gst.Element.
 
@@ -597,6 +626,7 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
         controllable (bool): Whether the properties being controlled by
             keyframes is allowed.
     """
+    custom_ui_creators = None
 
     def __init__(self, controllable=True):
         Gtk.Box.__init__(self)
@@ -606,6 +636,31 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
         self.properties = {}
         self.__controllable = controllable
         self.set_orientation(Gtk.Orientation.VERTICAL)
+        self.__bindings_by_keyframe_button = {}
+        self.__widgets_by_keyframe_button = {}
+        self._unhandled_properties = []
+        self.uncontrolled_properties = {}
+        if self.custom_ui_creators is None:
+            self._fill_custom_ui_creators()
+
+    def _fill_custom_ui_creators(self):
+        """
+        Automatically detect available custom GUIs for some effects,
+        and use them instead of autogenerated interfaces.
+        """
+        self.custom_ui_creators = {}
+        customwidgets_dir = os.path.join(os.path.dirname(__file__), "customwidgets")
+        for f in os.listdir(customwidgets_dir):
+            if f.endswith(".py"):
+                module_name = f.replace(".py", "")
+                try:
+                    spec = importlib.util.spec_from_file_location(module_name, os.path.join(customwidgets_dir, f))
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    self.custom_ui_creators[module_name] = module.create_widget
+                except AttributeError:
+                    # No create_widget method present, do not do anything
+                    pass
 
     def deactivate_keyframe_toggle_buttons(self):
         """Makes sure the keyframe togglebuttons are deactivated."""
@@ -631,7 +686,125 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
         self.info("element: %s, use values: %s", element, values)
         self.element = element
         self.ignore = ignore
-        self.__add_widgets(values, with_reset_button)
+        created = False
+        if isinstance(element, GES.Effect):
+            bin_description = element.props.bin_description
+            # First, check if we already have an existing UI ready to display
+            try:
+                created = self.custom_ui_creators[bin_description](self, element)
+                if created:
+                    self.pack_start(created, True, True, 0)
+                    self.show_all()
+                    self.log("Reusing the previously created UI for %s", bin_description)
+            except KeyError:
+                pass
+            # Otherwise, check if there's a custom UI available as a glade file
+            # in the utils/customwidgets directory:
+            if not created:
+                try:
+                    builder = Gtk.Builder()
+                    builder.add_from_file(os.path.join(get_ui_dir(),
+                                                       "customwidgets", bin_description + ".ui"))
+                    self.mapBuilder(builder)
+                    self.info("Found a custom .ui file for %s", bin_description)
+                    created = True
+                except GLib.GError:
+                    self.log("No .ui file available for %s", bin_description)
+
+        # If all else fails, dynamically create a UI from the properties
+        if not created:
+            self.__add_widgets(values, with_reset_button)
+
+    def mapBuilder(self, builder):
+        """
+        Analyze a GtkBuilder object, map the GStreamer element's properties
+        to corresponding widgets, and connect signals automatically.
+        Prop control widgets should be named "element_name::prop_name", where:
+        - element_name is the gstreamer element (ex: the "alpha" effect)
+        - prop_name is the name of one of a particular property of the element
+        If present, a reset button corresponding to the property will be used
+        (the button must be named similarly, with "::reset" after the prop name)
+        A button named reset_all_button can also be provided and will be used as
+        a fallback for each property without an individual reset button.
+        Similarly, the keyframe control button corresponding to the property (if controllable)
+        can be used whose name is to be "element_name::prop_name::keyframe".
+        """
+        reset_all_button = builder.get_object("reset_all_button")
+        for prop in self._getProperties():
+            widget_name = prop.owner_type.name + "::" + prop.name
+            widget = builder.get_object(widget_name)
+            if widget is None:
+                self._unhandled_properties.append(prop)
+                self.warning("No custom widget found for %s property \"%s\"" %
+                             (prop.owner_type.name, prop.name))
+            else:
+                reset_name = widget_name + "::" + "reset"
+                reset_widget = builder.get_object(reset_name)
+                if not reset_widget:
+                    # If reset_all_button is not found, it will be None
+                    reset_widget = reset_all_button
+                keyframe_name = widget_name + "::" + "keyframe"
+                keyframe_widget = builder.get_object(keyframe_name)
+                self.addPropertyWidget(prop, widget, reset_widget, keyframe_widget)
+
+    def addPropertyWidget(self, prop, widget, to_default_btn=None, keyframe_btn=None):
+        """
+        Connect an element property to a GTK Widget.
+        Optionally, a reset button widget can also be provided.
+        Unless you want to connect each widget individually, you should be using
+        the "mapBuilder" method instead.
+        """
+        if isinstance(widget, DynamicWidget):
+            # if the widget is already a DynamicWidget we use it as is
+            dynamic_widget = widget
+        else:
+            # if the widget is not dynamic we try to create a wrapper around it
+            # so we can control it with the standardized DynamicWidget API
+            dynamic_widget = make_widget_wrapper(prop, widget)
+
+        if dynamic_widget:
+            self.properties[prop] = dynamic_widget
+
+            self.element.connect('notify::' + prop.name, self._propertyChangedCb,
+                                 dynamic_widget)
+            # The "reset to default" button associated with this property
+            if isinstance(to_default_btn, Gtk.Button):
+                to_default_btn.connect('clicked', self.__reset_to_default_clicked_cb, dynamic_widget, keyframe_btn)
+            elif to_default_btn is not None:
+                self.warning("to_default_btn should be Gtk.Button or None, got %s", to_default_btn)
+
+            # The "keyframe toggle" button associated with this property
+            if not isinstance(widget, (ToggleWidget, ChoiceWidget)):
+                res, element, pspec = self.element.lookup_child(prop.name)
+                assert res
+                binding = GstController.DirectControlBinding.new(
+                    element, prop.name,
+                    GstController.InterpolationControlSource())
+                if binding.pspec:
+                    # The prop can be controlled (keyframed).
+                    if isinstance(keyframe_btn, Gtk.ToggleButton):
+                        keyframe_btn.connect('toggled', self.__keyframes_toggled_cb, prop)
+                        self.__widgets_by_keyframe_button[keyframe_btn] = widget
+                        prop_binding = self.element.get_control_binding(prop.name)
+                        self.__bindings_by_keyframe_button[keyframe_btn] = prop_binding
+                        self.__display_controlled(keyframe_btn, bool(prop_binding))
+                    elif keyframe_btn is not None:
+                        self.warning("keyframe_btn should be Gtk.ToggleButton or None, got %s", to_default_btn)
+        else:
+            # If we add a non-standard widget, the creator of the widget is
+            # responsible for handling its behaviour "by hand"
+            self.info("Can not wrap widget %s for property %s" % (widget, prop))
+            # We still keep a ref to that widget, "just in case"
+            self.uncontrolled_properties[prop] = widget
+
+        if hasattr(prop, 'blurb'):
+            widget.set_tooltip_text(prop.blurb)
+
+    def _getProperties(self):
+        if isinstance(self.element, GES.BaseEffect):
+            return [prop for prop in self.element.list_children_properties() if not prop.name in self.ignore]
+        else:
+            return [prop for prop in GObject.list_properties(self.element) if not prop.name in self.ignore]
 
     def __add_widgets(self, values, with_reset_button):
         """Prepares a Gtk.Grid containing the property widgets of an element.
@@ -804,7 +977,7 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
             track_element.ui_element.showDefaultKeyframes()
 
     def __reset_to_default_clicked_cb(self, unused_button, widget,
-                                      keyframe_button):
+                                      keyframe_button=None):
         if keyframe_button:
             # The prop is controllable (keyframmable).
             binding = self.__bindings_by_keyframe_button.get(keyframe_button)
