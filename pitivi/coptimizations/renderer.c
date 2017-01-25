@@ -23,14 +23,17 @@ py_fill_surface (PyObject * self, PyObject * args)
   cairo_t *ctx;
   int width, height;
   float pixelsPerSample;
+  float scaleFactor;
   float currentPixel;
   int samplesInAccum;
   float x = 0.;
+  float optHeight;
   double accum;
 
   if (!PyArg_ParseTuple (args, "O!ii", &PyList_Type, &samples, &width, &height))
     return NULL;
 
+  const float minFactor = 0.02 * height;
   length = PyList_Size (samples);
 
   surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, width, height);
@@ -58,12 +61,14 @@ py_fill_surface (PyObject * self, PyObject * args)
       return NULL;
     }
 
+    scaleFactor = 1 / pixelsPerSample + minFactor;
     currentPixel += pixelsPerSample;
     samplesInAccum += 1;
     accum += sample;
     if (currentPixel > 1.0) {
       accum /= samplesInAccum;
-      cairo_line_to (ctx, x, height - accum);
+      optHeight = height - accum * scaleFactor;
+      cairo_line_to (ctx, x, optHeight);
       accum = 0;
       currentPixel -= 1.0;
       samplesInAccum = 0;
