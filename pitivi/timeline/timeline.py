@@ -1391,9 +1391,22 @@ class TimelineContainer(Gtk.Grid, Zoomable, Loggable):
 
     def updateActions(self):
         selection_non_empty = bool(self.timeline.selection)
+        can_ungroup = selection_non_empty
+        can_group = selection_non_empty
+        if len(self.timeline.selection.getSelectedTrackElements()) == 1:
+            can_ungroup = False
+        containers = set()
+        for obj in self.timeline.selection:
+            toplevel = obj.get_toplevel_parent()
+            for child in toplevel.get_children(False):
+                containers.add(child)
+            if len(containers) > 1:
+                break
+        if len(containers) == 1:
+            can_group = False
         self.delete_action.set_enabled(selection_non_empty)
-        self.group_action.set_enabled(selection_non_empty)
-        self.ungroup_action.set_enabled(selection_non_empty)
+        self.group_action.set_enabled(can_group)
+        self.ungroup_action.set_enabled(can_ungroup and not can_group)
         self.copy_action.set_enabled(selection_non_empty)
         can_paste = bool(self.__copiedGroup)
         self.paste_action.set_enabled(can_paste)
@@ -1650,6 +1663,7 @@ class TimelineContainer(Gtk.Grid, Zoomable, Loggable):
 
             if new_group:
                 self.timeline.current_group.add(new_group)
+        self.updateActions()
 
     def __copyClipsCb(self, unused_action, unused_parameter):
         if self.timeline.current_group:
