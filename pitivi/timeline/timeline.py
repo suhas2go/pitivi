@@ -1414,11 +1414,12 @@ class TimelineContainer(Gtk.Grid, Zoomable, Loggable):
         self.timeline.setProject(self._project)
 
     def updateActions(self):
-        selection_non_empty = bool(self.timeline.selection)
+        selection = self.timeline.selection
+        selection_non_empty = bool(selection)
         self.delete_action.set_enabled(selection_non_empty)
         self.delete_and_shift_action.set_enabled(selection_non_empty)
-        self.group_action.set_enabled(selection_non_empty)
-        self.ungroup_action.set_enabled(selection_non_empty)
+        self.group_action.set_enabled(selection.can_group)
+        self.ungroup_action.set_enabled(selection.can_ungroup and not selection.can_group)
         self.copy_action.set_enabled(selection_non_empty)
         can_paste = bool(self.__copiedGroup)
         self.paste_action.set_enabled(can_paste)
@@ -1610,6 +1611,8 @@ class TimelineContainer(Gtk.Grid, Zoomable, Loggable):
         self.app.shortcuts.add("navigation.forward_one_second",
                                ["<Shift>Right"],
                                _("Seek forward one second"))
+
+        self.updateActions()
 
     def _scrollToPixel(self, x):
         hadj = self.timeline.hadj
