@@ -566,7 +566,7 @@ class EffectListWidget(Gtk.Box, Loggable):
 PROPS_TO_IGNORE = ['name', 'qos', 'silent', 'message', 'parent']
 
 
-class EffectsPropertiesManager:
+class EffectsPropertiesManager(Loggable):
     """Provides and caches UIs for editing effects.
 
     Attributes:
@@ -574,6 +574,7 @@ class EffectsPropertiesManager:
     """
 
     def __init__(self, app):
+        Loggable.__init__(self)
         self.cache_dict = {}
         self._current_element_values = {}
         self.app = app
@@ -607,10 +608,20 @@ class EffectsPropertiesManager:
             return self.cache_dict.pop(effect)
 
     def _postConfiguration(self, effect, effect_set_ui):
+        effect_name = effect.get_property("bin-description")
         if 'aspectratiocrop' in effect.get_property("bin-description"):
             for widget in effect_set_ui.get_children()[0].get_children():
                 if isinstance(widget, FractionWidget):
                     widget.addPresets(["4:3", "5:4", "9:3", "16:9", "16:10"])
+        elif effect_name == "alpha":
+            # All modes other than custom RGB chroma keying are useless to us.
+            # "ALPHA_METHOD_CUSTOM" corresponds to "3"
+            self.debug("Setting alpha's method to 3 (custom RGB chroma keying)")
+            effect.set_child_property("method", 3)
+        else:
+            self.log('No additional set-up required for "%s"', effect_name)
+            return
+        self.debug('Additional properties successfully set for "%s"', effect_name)
 
     def _connectAllWidgetCallbacks(self, effect_settings_widget, effect):
         for prop, widget in effect_settings_widget.properties.items():
