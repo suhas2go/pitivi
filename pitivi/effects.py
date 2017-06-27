@@ -594,6 +594,7 @@ class EffectsPropertiesManager(GObject.Object, Loggable):
         effect_name = effect.get_property("bin-description")
         self.log('UI is being auto-generated for "%s"', effect_name)
         effect_widget.add_widgets(with_reset_button=True)
+        self._postConfiguration(effect, effect_widget)
         return None
 
     def do_create_property_widget(self, effect_widget, effect, prop, prop_value):
@@ -626,7 +627,6 @@ class EffectsPropertiesManager(GObject.Object, Loggable):
                 effect_widget.show_widget(widget)
             self.cache_dict[effect] = effect_widget
             self._connectAllWidgetCallbacks(effect_widget, effect)
-            self._postConfiguration(effect, effect_widget)
 
         for prop in effect.list_children_properties():
             value = effect.get_child_property(prop.name)
