@@ -29,6 +29,7 @@ CUSTOM_WIDGETS_DIR = os.path.join(configure.get_ui_dir(), "customwidgets")
 
 def setup_custom_effect_widgets(effect_prop_manager):
     effect_prop_manager.connect('create_widget', create_custom_widget_cb)
+    effect_prop_manager.connect('create_property_widget', create_custom_prop_widget_cb)
 
 
 def setup_from_ui_file(element_setting_widget, path):
@@ -38,6 +39,12 @@ def setup_from_ui_file(element_setting_widget, path):
     # Link ui widgets to the corresponding properties of the effect
     element_setting_widget.mapBuilder(builder)
     return builder
+
+
+def create_custom_prop_widget_cb(effect_prop_manager, effect_widget, effect, prop, prop_value):
+    effect_name = effect.get_property("bin-description")
+    if effect_name == "alpha":
+        return create_custom_alpha_prop_widget(effect_widget, effect, prop, prop_value)
 
 
 def create_custom_widget_cb(effect_prop_manager, effect_widget, effect):
@@ -57,4 +64,11 @@ def create_custom_widget_cb(effect_prop_manager, effect_widget, effect):
 
 def create_alpha_widget(element_setting_widget, element):
     """Not implemented yet."""
+    # Main alpha widget would go here
+    return None
+
+
+def create_custom_alpha_prop_widget(element_setting_widget, element, prop, prop_value):
+    """Not implemented yet."""
+    # In the auto-generated UI, replace a property widget with a custom one
     return None

@@ -627,7 +627,8 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
             keyframes is allowed.
     """
 
-    def __init__(self, controllable=True):
+    def __init__(self, effect_prop_manager, controllable=True):
+        self.effect_prop_manager = effect_prop_manager
         Gtk.Box.__init__(self)
         Loggable.__init__(self)
         self.element = None
@@ -808,8 +809,7 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
                     prop_value = self.element.get_property(prop.name)
                 else:
                     prop_value = values[prop.name]
-
-            widget = self._makePropertyWidget(prop, prop_value)
+            widget = self.effect_prop_manager.emit("create_property_widget", self, self.element, prop, prop_value)
             if isinstance(widget, ToggleWidget):
                 widget.set_label(prop.nick)
                 grid.attach(widget, 0, y, 2, 1)
@@ -969,7 +969,7 @@ class GstElementSettingsWidget(Gtk.Box, Loggable):
                 values[prop.name] = value
         return values
 
-    def _makePropertyWidget(self, prop, value=None):
+    def makePropertyWidget(self, prop, value=None):
         """Creates a widget for the specified element property."""
         type_name = GObject.type_name(prop.value_type.fundamental)
         if type_name == "gchararray":

@@ -44,7 +44,6 @@ from gi.repository import Pango
 from pitivi.configure import get_pixmap_dir
 from pitivi.configure import get_ui_dir
 from pitivi.settings import GlobalSettings
-from pitivi.utils.custom_effect_widgets import create_custom_widget
 from pitivi.utils.loggable import Loggable
 from pitivi.utils.ui import EFFECT_TARGET_ENTRY
 from pitivi.utils.ui import SPACING
@@ -575,7 +574,7 @@ class EffectsPropertiesManager(GObject.Object, Loggable):
     """
 
     def create_widget_accumulator(*args):
-        """Abort 'create_widget' emission if we got a widget."""
+        """Aborts signal emission if we got a widget."""
         handler_return = args[2]
         if handler_return is None:
             return True, handler_return
@@ -584,6 +583,9 @@ class EffectsPropertiesManager(GObject.Object, Loggable):
     __gsignals__ = {
         'create_widget': (GObject.SIGNAL_RUN_LAST, Gtk.Widget, (GstElementSettingsWidget, GES.Effect,),
                           create_widget_accumulator),
+        'create_property_widget': (
+            GObject.SIGNAL_RUN_LAST, object, (GstElementSettingsWidget, GES.Effect, object, object,),
+            create_widget_accumulator),
     }
 
     def do_create_widget(self, effect_widget, effect):
@@ -593,6 +595,12 @@ class EffectsPropertiesManager(GObject.Object, Loggable):
         self.log('UI is being auto-generated for "%s"', effect_name)
         effect_widget.add_widgets(with_reset_button=True)
         return None
+
+    def do_create_property_widget(self, effect_widget, effect, prop, prop_value):
+        """The last callback connected to the 'create_property_widget' signal
+        to auto-generate UI if all else fails."""
+        widget = effect_widget.make_property_widget(prop, prop_value)
+        return widget
 
     def __init__(self, app):
         GObject.Object.__init__(self)
@@ -611,7 +619,7 @@ class EffectsPropertiesManager(GObject.Object, Loggable):
             GstElementSettingsWidget: A container for configuring the effect.
         """
         if effect not in self.cache_dict:
-            effect_widget = GstElementSettingsWidget()
+            effect_widget = GstElementSettingsWidget(self)
             effect_widget.setElement(effect, PROPS_TO_IGNORE)
             widget = self.emit('create_widget', effect_widget, effect)
             if widget is not None:
