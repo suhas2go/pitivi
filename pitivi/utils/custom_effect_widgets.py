@@ -23,6 +23,7 @@ from gi.repository import Gdk
 from gi.repository import Gtk
 
 from pitivi import configure
+from pitivi.utils.loggable import Loggable
 
 CUSTOM_WIDGETS_DIR = os.path.join(configure.get_ui_dir(), "customwidgets")
 
@@ -52,6 +53,11 @@ def create_custom_widget_cb(effect_prop_manager, effect_widget, effect):
     effect_name = effect.get_property("bin-description")
     default_path = os.path.join(CUSTOM_WIDGETS_DIR, effect_name + ".ui")
 
+    # Write individual effect callbacks here
+    if effect_name == "alpha":
+        widget = create_alpha_widget(effect_widget, effect)
+        return widget
+
     # Check if there is a UI file available as a glade file
     try:
         # Assuming a GtkGrid called base_table exists
@@ -63,9 +69,33 @@ def create_custom_widget_cb(effect_prop_manager, effect_widget, effect):
 
 
 def create_alpha_widget(element_setting_widget, element):
-    """Not implemented yet."""
-    # Main alpha widget would go here
-    return None
+    builder = setup_from_ui_file(element_setting_widget, os.path.join(CUSTOM_WIDGETS_DIR, "alpha.ui"))
+
+    # Additional Setup
+
+    # Color button has to be connected manually!
+
+    r_NumericWidget = element_setting_widget.get_widget_of_prop("target-r")
+    g_NumericWidget = element_setting_widget.get_widget_of_prop("target-g")
+    b_NumericWidget = element_setting_widget.get_widget_of_prop("target-b")
+
+    color_button = builder.get_object("colorbutton")
+
+    def color_set_cb(color_button):
+        # TODO: use Gdk.rgba_to_string instead
+        color = color_button.get_color()
+
+        r_NumericWidget.setWidgetValue(int((color.red / 65535) * 255))
+        g_NumericWidget.setWidgetValue(int((color.green / 65535) * 255))
+        b_NumericWidget.setWidgetValue(int((color.blue / 65535) * 255))
+
+    color_button.connect("color-set", color_set_cb)
+
+    # All modes other than custom RGB chroma keying are useless to us.
+    # "ALPHA_METHOD_CUSTOM" corresponds to "3"
+    Loggable().debug("Setting alpha's method to 3 (custom RGB chroma keying)")
+    element.set_child_property("method", 3)
+    return builder.get_object("base_table")
 
 
 def create_custom_alpha_prop_widget(element_setting_widget, element, prop, prop_value):
