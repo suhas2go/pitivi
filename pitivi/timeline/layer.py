@@ -93,6 +93,7 @@ class LayerControls(Gtk.EventBox, Loggable):
         popover.props.position = Gtk.PositionType.LEFT
         self.menubutton.set_popover(popover)
         name_row.pack_start(self.menubutton, False, False, 0)
+        self.old_menu_icon = None
 
         space = Gtk.Label()
         space.props.vexpand = True
@@ -221,9 +222,10 @@ class LayerControls(Gtk.EventBox, Loggable):
             icon = "video-x-generic"
         else:
             icon = "audio-x-generic"
-        image = Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
-        self.menubutton.props.image = image
-
+        if self.old_menu_icon != icon:
+            image = Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+            self.menubutton.props.image = image
+            self.old_menu_icon = icon
         # TODO: Use media_types to determine which controls to show.
 
 
