@@ -35,6 +35,7 @@ from pitivi.utils.custom_effect_widgets import setup_custom_effect_widgets
 from pitivi.utils.loggable import Loggable
 from pitivi.utils.misc import disconnectAllByFunc
 from pitivi.utils.pipeline import PipelineError
+from pitivi.utils.timeline import Zoomable
 from pitivi.utils.ui import disable_scroll
 from pitivi.utils.ui import EFFECT_TARGET_ENTRY
 from pitivi.utils.ui import fix_infobar
@@ -88,6 +89,10 @@ class ClipProperties(Gtk.ScrolledWindow, Loggable):
         self.effect_expander = EffectProperties(app, self)
         self.effect_expander.set_vexpand(False)
         vbox.pack_start(self.effect_expander, False, False, 0)
+
+        self.speed_expander = SpeedProperties(app)
+        self.speed_expander.set_vexpand(False)
+        vbox.pack_start(self.speed_expander, False, False, 0)
 
     def createInfoBar(self, text):
         """Creates an infobar to be displayed at the top."""
@@ -897,4 +902,111 @@ class TransformationProperties(Gtk.Expander, Loggable):
             self._selected_clip = None
             self._project.pipeline.commit_timeline()
         self.__set_source(None)
+        self.hide()
+
+
+class SpeedProperties(Gtk.Expander, Loggable):
+    """Widget for configuring the speed of a clip."""
+
+    __signals__ = {
+        'selection-changed': []}
+
+    def __init__(self, app):
+        Gtk.Expander.__init__(self)
+        Loggable.__init__(self)
+        self.app = app
+        self._project = None
+        self._selection = None
+        self._selected_clip = None
+
+        self.set_label(_("Speed"))
+
+        self.builder = Gtk.Builder()
+        self.builder.add_from_file(os.path.join(get_ui_dir(), "clipspeed.ui"))
+        self.add(self.builder.get_object("speed_box"))
+        self._initButtons()
+
+        self.app.project_manager.connect_after(
+            "new-project-loaded", self._newProjectLoadedCb)
+        self.app.project_manager.connect_after(
+            "project-closed", self.__project_closed_cb)
+
+    def _newProjectLoadedCb(self, unused_app, project):
+        if self._selection is not None:
+            self._selection.disconnect_by_func(self._selectionChangedCb)
+            self._selection = None
+
+        self._project = project
+        if project:
+            self._selection = project.ges_timeline.ui.selection
+            self._selection.connect('selection-changed', self._selectionChangedCb)
+
+    def __project_closed_cb(self, unused_project_manager, unused_project):
+        self._project = None
+
+    def _initButtons(self):
+        self.speed_spin_button = self.builder.get_object("speed_spin_button")
+        self.speed_spin_button.set_value(1.0)
+        list_radio_button_names = ["radiobutton1", "radiobutton2", "radiobutton3"]
+        self.val_to_radio_button = {}
+        for radio_button_name in list_radio_button_names:
+            radio_button = self.builder.get_object(radio_button_name)
+            label = radio_button.get_label()
+            val = self.__label_to_value(label)
+            self.val_to_radio_button[val] = radio_button
+            radio_button.connect("toggled", self.radio_button_toggled_cb)
+        self.other_button = self.builder.get_object("other")
+        self.speed_spin_button.connect("value-changed", self.spin_button_value_changed_cb)
+
+    def spin_button_value_changed_cb(self, widget):
+        pipeline = self.app.project_manager.current_project.pipeline
+        with self.app.action_log.started("Clip rate change",
+                                         finalizing_action=CommitTimelineFinalizingAction(pipeline),
+                                         toplevel=False):
+            clip = self._selected_clip
+            rate = widget.get_value()
+            if clip.get_rate() != rate:
+                clip.set_rate(rate)
+
+    def __label_to_value(self, label):
+        label = label[:-1]
+        return float(label)
+
+    def radio_button_toggled_cb(self, widget):
+        # To avoid setting value back to the previous, ignore signal from
+        # the radio button toggled inactive.
+        if not widget.get_active():
+            return
+        pipeline = self.app.project_manager.current_project.pipeline
+        with self.app.action_log.started("Clip rate change",
+                                         finalizing_action=CommitTimelineFinalizingAction(pipeline),
+                                         toplevel=False):
+            clip = self._selected_clip
+            rate = self.__label_to_value(widget.get_label())
+            if clip.get_rate() != rate:
+                clip.set_rate(rate)
+
+    def _rate_changed_cb(self, ges_clip, pspec):
+        rate = ges_clip.get_rate()
+        if self.speed_spin_button.get_value() != rate:
+            self.speed_spin_button.set_value(rate)
+
+        if rate in self.val_to_radio_button:
+            radio_button = self.val_to_radio_button[rate]
+            radio_button.set_active(True)
+        else:
+            self.other_button.set_active(True)
+
+    def _selectionChangedCb(self, unused_timeline):
+        if len(self._selection) == 1:
+            self._selected_clip = list(self._selection)[0]
+            self._selected_clip.connect("notify::rate", self._rate_changed_cb)
+            self.show()
+            return
+
+        # Deselect
+        if self._selected_clip:
+            self._selected_clip.disconnect_by_func(self._rate_changed_cb)
+            self._selected_clip = None
+            self._project.pipeline.commit_timeline()
         self.hide()
